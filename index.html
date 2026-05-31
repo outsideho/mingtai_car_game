@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>馬路生存戰 - WP安全隔離版</title>
     <style>
-        /* ⚡ 強制讓遊戲盒子充氣，不准被捏扁 ⚡ */
+       /* ⚡ 升級版：強制排版 + 按鈕安全距離 ⚡ */
 body {
     margin: 0;
     padding: 0;
@@ -15,12 +15,33 @@ body {
     align-items: center !important;
     min-height: 100vh;
 }
-#game-container, .game-container, #gameContainer, canvas {
+
+/* 1. 讓外殼自動伸展高度，不准把內容壓扁 */
+#game-container, .game-container, #gameContainer {
     width: 430px !important;
     max-width: 100vw !important;
-    height: 92vh !important;
+    height: auto !important; /* 變成自動高度 */
+    min-height: 850px !important; /* 保證有足夠空間 */
     display: block !important;
     margin: 0 auto !important;
+    position: relative !important;
+}
+
+/* 2. 解除按鈕的絕對定位，讓它們乖乖排隊 */
+#result-screen button, 
+.result-overlay button, 
+#result-screen a, 
+.result-overlay a,
+button {
+    display: block !important;
+    position: relative !important; /* 改為相對定位 */
+    top: auto !important;         /* 忘掉原本死板的上下坐標 */
+    bottom: auto !important;
+    margin: 15px auto !important;  /* 讓每個按鈕上下都空出 15 像素的安全距離 */
+    width: 90% !important;
+    height: 45px !important;       /* 給按鈕標準的高度 */
+    line-height: 45px !important;  /* 讓字乖乖站在按鈕正中間 */
+    padding: 0 !important;
 }
         /* 嚴格限制所有基本樣式僅在遊戲容器內生效，防止干擾 WP 主題 */
         #game-container { 
