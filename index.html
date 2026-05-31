@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>馬路生存戰 - WP安全隔離版</title>
+    <style>
+        /* 嚴格限制所有基本樣式僅在遊戲容器內生效，防止干擾 WP 主題 */
+        #game-container { 
+            width: 100%; 
+            max-width: 450px; 
+            height: 100vh; 
+            max-height: 800px; 
+            background: #1a1a1e; 
+            position: relative; 
+            overflow: hidden; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+            border-radius: 12px;
+            margin: 0 auto;
+            color: #fff;
+            box-sizing: border-box;
+            font-family: "Microsoft JhengHei", sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #game-container * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        .game-screen { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; flex-direction: column; align-items: center; padding: 20px; transition: all 0.3s ease; }
+        .game-hidden { display: none !important; }
+
+        /* 1. 準備畫面 */
+        #setup-screen { justify-content: center; background: linear-gradient(135deg, #1e2640 0%, #111525 100%); }
+        #game-container h1 { font-size: 28px; font-weight: 800; color: #ff4757; text-shadow: 0 2px 10px rgba(255,71,87,0.3); margin-bottom: 5px; text-align: center; line-height: 1.4; }
+        .game-subtitle { font-size: 14px; color: #a4b0be; margin-bottom: 25px; text-align: center;}
+        
+        .game-form-group { width: 100%; margin-bottom: 15px; }
+        #game-container label { display: block; font-size: 14px; color: #ff7675; margin-bottom: 8px; font-weight: bold; text-align: center; }
+        #game-container input[type="text"] { width: 100%; padding: 12px; background: rgba(255,255,255,0.08); border: 2px solid #341f97; border-radius: 8px; color: #fff; font-size: 18px; text-align: center; text-transform: uppercase; letter-spacing: 2px; }
+        #game-container input[type="color"] { width: 80px; height: 40px; border: none; border-radius: 6px; background: none; cursor: pointer; display: block; margin: 0 auto; }
+        
+        /* 汽車正面視角預覽模組 */
+        .preview-box { width: 100%; height: 130px; margin: 10px 0; display: flex; justify-content: center; align-items: center; background: rgba(0, 0, 0, 0.25); border-radius: 10px; padding: 10px; }
+        .car-front { width: 150px; height: 110px; display: flex; flex-direction: column; align-items: center; position: relative; }
+        .front-roof { width: 85px; height: 14px; border-top-left-radius: 12px; border-top-right-radius: 12px; background: #ff4757; transition: background 0.2s; }
+        .front-windshield { width: 102px; height: 32px; background: #2f3542; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom: 3px solid rgba(0,0,0,0.4); position: relative; }
+        .front-windshield::after { content: ''; position: absolute; top: 4px; left: 12px; width: 30px; height: 12px; background: rgba(255,255,255,0.15); transform: skewX(-30deg); }
+        .front-body { width: 130px; height: 50px; background: #ff4757; border-radius: 10px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; box-shadow: 0 5px 15px rgba(0,0,0,0.4); transition: background 0.2s; }
+        .light { position: absolute; top: 10px; width: 18px; height: 14px; background: #fff; border-radius: 50%; box-shadow: 0 0 15px #fff, 0 0 30px #feca57; }
+        .left-light { left: 8px; }
+        .right-light { right: 8px; }
+        .front-grille { width: 55px; height: 10px; background: #1e272e; margin-bottom: 5px; border-radius: 3px; border-bottom: 1px solid #57606f; }
+        .front-plate { width: 75px; height: 20px; background: #fff; border: 1.5px solid #111; border-radius: 2px; display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .front-plate span { color: #111; font-weight: 800; font-size: 10px; letter-spacing: 0.5px; font-family: 'Courier New', Courier, monospace; text-align: center; }
+        .front-tires { position: absolute; bottom: 4px; width: 140px; display: flex; justify-content: space-between; z-index: -1; }
+        .front-tire { width: 16px; height: 30px; background: #1e272e; border-radius: 5px; }
+        
+        /* 獨立化按鈕，避開 WP 主題覆蓋 */
+        .game-btn { width: 100%; padding: 15px; background: linear-gradient(90deg, #ff4757, #ff6b81); border: none; border-radius: 8px; color: #fff !important; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(255,71,87,0.4); margin-top: 10px; text-decoration: none; text-align: center; display: block; line-height: 1; pointer-events: auto !important; }
+        .game-btn:active { transform: scale(0.98); }
+
+        /* 2. 遊戲畫面 */
+        #play-screen { padding: 0; background: #2f3542; }
+        #gameCanvas { background: #57606f; width: 100%; height: 100%; display: block; }
+        #hud { position: absolute; top: 15px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; gap: 5px; z-index: 10; }
+        .hud-box { background: rgba(0,0,0,0.75); padding: 8px 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(5px); font-size: 14px; white-space: nowrap; }
+        #hud-cost { color: #ff4757; font-weight: 900; }
+        #hud-time { color: #54a0ff; font-weight: bold; }
+        #hud-progress { color: #eccc68; font-weight: bold; }
+        
+        /* 手機虛擬按鍵 */
+        #mobile-controls { position: absolute; bottom: 20px; left: 15px; right: 15px; display: flex; justify-content: space-between; align-items: center; height: 120px; pointer-events: none; z-index: 10; }
+        .ctrl-group { display: flex; gap: 10px; pointer-events: auto; }
+        .ctrl-btn { width: 65px; height: 65px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 24px; color: white; backdrop-filter: blur(5px); transition: background 0.1s; cursor: pointer; }
+        .ctrl-btn:active { background: rgba(255,71,87,0.6); border-color: #ff4757; }
+        .pedal { width: 60px; height: 90px; border-radius: 10px; font-size: 14px; font-weight: bold; }
+        
+        /* 3. 結算畫面 */
+        #result-screen { justify-content: center; background: linear-gradient(135deg, #111 0%, #222 100%); text-align: center; overflow-y: auto; }
+        .bill-box { width: 100%; background: #fff; color: #2f3542; border-radius: 12px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: 15px 0; border-top: 8px solid #ff4757; position: relative; }
+        .bill-title { font-size: 14px; color: #747d8c; letter-spacing: 2px; text-transform: uppercase; }
+        .bill-amount { font-size: 34px; font-weight: 900; color: #ff4757; margin: 5px 0; }
+        .bill-time { font-size: 20px; font-weight: bold; color: #2f3542; margin-bottom: 10px; }
+        .bill-plate { font-size: 14px; font-weight: bold; background: #f1f2f6; padding: 3px 10px; border-radius: 4px; display: inline-block; border: 1px solid #ced6e0; color: #2f3542; }
+        .commentary { font-size: 15px; color: #a4b0be; line-height: 1.6; margin-bottom: 25px; padding: 0 10px; }
+        
+        .btn-hook { background: linear-gradient(90deg, #2ed573, #1dd1a1); box-shadow: 0 4px 15px rgba(46,213,115,0.4); margin-bottom: 12px; animation: gamePulse 2s infinite; }
+        .btn-share { background: #341f97; box-shadow: 0 4px 15px rgba(52,31,151,0.4); margin-bottom: 12px; }
+        .btn-restart { background: #747d8c; box-shadow: 0 4px 15px rgba(116,125,140,0.3); }
+
+        @keyframes gamePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); box-shadow: 0 4px 25px rgba(46,213,115,0.7); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="setup-screen" class="game-screen">
+        <h1>馬路生存戰</h1>
+        <div class="game-subtitle">【競速音效版】考驗技術，更考驗心臟！</div>
+        
+        <div class="game-form-group">
+            <label>1. 打造你的專屬愛車烤漆</label>
+            <input type="color" id="car-color" value="#ff4757">
+        </div>
+        
+        <div class="preview-box">
+            <div id="car-front-preview" class="car-front">
+                <div class="front-roof color-target"></div>
+                <div class="front-windshield"></div>
+                <div class="front-body color-target">
+                    <div class="light left-light"></div>
+                    <div class="light right-light"></div>
+                    <div class="front-grille"></div>
+                    <div class="front-plate">
+                        <span id="preview-plate-node">WBO-2026</span>
+                    </div>
+                </div>
+                <div class="front-tires">
+                    <div class="front-tire"></div>
+                    <div class="front-tire"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-form-group">
+            <label>2. 輸入你的真實車牌 (限8碼英數)</label>
+            <input type="text" id="car-plate" placeholder="ABC-1234" maxlength="8" value="WBO-2026">
+        </div>
+
+        <button class="game-btn" id="btn-start">啟動引擎，出發！</button>
+    </div>
+
+    <div id="play-screen" class="game-screen game-hidden">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="hud">
+            <div class="hud-box" id="hud-cost">維修費: $0</div>
+            <div class="hud-box" id="hud-time">時間: 0.00s</div>
+            <div class="hud-box" id="hud-progress">里程: 0%</div>
+        </div>
+
+        <div id="mobile-controls">
+            <div class="ctrl-group">
+                <div class="ctrl-btn" id="btn-left">←</div>
+                <div class="ctrl-btn" id="btn-right">→</div>
+            </div>
+            <div class="ctrl-group">
+                <div class="ctrl-btn pedal" id="btn-brake" style="background:rgba(255,71,87,0.2);">煞車</div>
+                <div class="ctrl-btn pedal" id="btn-gas" style="background:rgba(46,213,115,0.2);">油門</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="result-screen" class="game-screen game-hidden">
+        <h1>安全抵達終點！</h1>
+        <div class="game-subtitle" style="margin-bottom:10px;">看看你的駕駛戰報...</div>
+        
+        <div class="bill-box">
+            <div class="bill-title">最終完賽成績單</div>
+            <div class="bill-time" id="final-time">完賽時間：0.00 秒</div>
+            <div class="bill-amount" id="final-cost">$0</div>
+            <div class="bill-plate" id="final-plate">ABC-1234</div>
+        </div>
+
+        <div class="commentary" id="final-comment">載入評語中...</div>
+
+        <button class="game-btn btn-hook" id="btn-hook">⏳ 啟動時光倒流！看產險如何歸零帳單</button>
+        <button class="game-btn btn-share" id="btn-share">📢 分享極速悲慘戰績</button>
+        <button class="game-btn btn-restart" id="btn-restart">🔄 不服氣？再衝一場</button>
+    </div>
+</div>
+
+<script>
+// 使用 DOMContentLoaded 確保 WordPress 將 HTML 節點渲染完畢後才執行 JS
+document.addEventListener('DOMContentLoaded', function() {
+    
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+    let engineOsc = null;
+    let engineGain = null;
+    let bgmInterval = null;
+    let bgmStep = 0;
+
+    function initAudio() {
+        if (audioCtx) return;
+        audioCtx = new AudioCtx();
+        setupEngineSound();
+        startBGM();
+    }
+
+    function setupEngineSound() {
+        engineOsc = audioCtx.createOscillator();
+        engineGain = audioCtx.createGain();
+        engineOsc.type = 'sawtooth';
+        engineOsc.frequency.setValueAtTime(50, audioCtx.currentTime);
+        engineGain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        
+        let filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(300, audioCtx.currentTime);
+
+        engineOsc.connect(filter);
+        filter.connect(engineGain);
+        engineGain.connect(audioCtx.destination);
+        engineOsc.start();
+    }
+
+    function updateEngineSound(speed, isGas) {
+        if (!audioCtx || !engineOsc) return;
+        let baseFreq = 45 + (speed * 18);
+        if (isGas) baseFreq += 35; 
+        engineOsc.frequency.setTargetAtTime(baseFreq, audioCtx.currentTime, 0.1);
+        engineGain.gain.setTargetAtTime(isGas ? 0.07 : 0.03, audioCtx.currentTime, 0.1);
+    }
+
+    function playBrakeSound() {
+        if (!audioCtx) return;
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(850, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(350, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
+    }
+
+    function playTurnSound() {
+        if (!audioCtx) return;
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(750, audioCtx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+    }
+
+    function playCrashSound() {
+        if (!audioCtx) return;
+        let now = audioCtx.currentTime;
+        
+        let metalOsc = audioCtx.createOscillator();
+        let metalGain = audioCtx.createGain();
+        metalOsc.type = 'sawtooth';
+        metalOsc.frequency.setValueAtTime(160, now);
+        metalOsc.frequency.linearRampToValueAtTime(30, now + 0.4);
+        metalGain.gain.setValueAtTime(0.4, now);
+        metalGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        metalOsc.connect(metalGain);
+        metalGain.connect(audioCtx.destination);
+        metalOsc.start(now);
+        metalOsc.stop(now + 0.4);
+
+        for(let i=0; i<3; i++) {
+            let glassOsc = audioCtx.createOscillator();
+            let glassGain = audioCtx.createGain();
+            glassOsc.type = 'square';
+            glassOsc.frequency.setValueAtTime(1800 + (i * 600), now);
+            glassGain.gain.setValueAtTime(0.06, now);
+            glassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15 + (i*0.05));
+            glassOsc.connect(glassGain);
+            glassGain.connect(audioCtx.destination);
+            glassOsc.start(now);
+            glassOsc.stop(now + 0.3);
+        }
+    }
+
+    function startBGM() {
+        if (bgmInterval) clearInterval(bgmInterval);
+        const seq = [110, 130, 146, 130, 165, 146, 196, 165]; 
+        bgmStep = 0;
+        bgmInterval = setInterval(() => {
+            if (gameState !== 'PLAY' || !audioCtx) return;
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(seq[bgmStep % seq.length], audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+            bgmStep++;
+        }, 160); 
+    }
+
+    function playVictorySound() {
+        if (!audioCtx) return;
+        if (engineOsc) { try { engineOsc.stop(); } catch(e){} }
+        
+        let now = audioCtx.currentTime;
+        const chords = [261.6, 329.6, 392.0, 523.3, 659.3, 784.0, 1046.5]; 
+        chords.forEach((freq, idx) => {
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + (idx * 0.08));
+            gain.gain.setValueAtTime(0.12, now + (idx * 0.08));
+            gain.gain.exponentialRampToValueAtTime(0.001, now + (idx * 0.08) + 0.4);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now + (idx * 0.08));
+            osc.stop(now + (idx * 0.08) + 0.45);
+        });
+    }
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let gameState = 'SETUP'; 
+    let carColor = '#ff4757';
+    let carPlate = 'WBO-2026';
+    let totalCost = 0;
+    let progress = 0; 
+    let gameStartTime = 0;
+    let elapsedTime = 0;
+    
+    let player = { x: 185, y: 450, w: 30, h: 55, speed: 2, maxSpeed: 8, targetLane: 1 };
+    const lanes = [95, 185, 275]; 
+    let obstacles = [];
+    let particles = [];
+    let splashTexts = [];
+    let shakeFrames = 0;
+    let gameClock = 0;
+
+    let keys = { Left: false, Right: false, Gas: false, Brake: false };
+
+    const accidentTemplates = [
+        { name: '前車急煞追撞', cost: 50000, color: '#f1f2f6' },
+        { name: '巷口三寶衝出', cost: 80000, color: '#eccc68' },
+        { name: '下大雨打滑自轉', cost: 120000, color: '#70a1ff' },
+        { name: '過彎太寬撞牆', cost: 150000, color: '#747d8c' },
+        { name: '自撞路樹', cost: 300000, color: '#2ed573' },
+        { name: '高貴的怨念', cost: 450000, color: '#ffa502' }
+    ];
+
+    const colorInput = document.getElementById('car-color');
+    const plateInput = document.getElementById('car-plate');
+    const previewPlateNode = document.getElementById('preview-plate-node');
+    
+    if(colorInput) {
+        colorInput.addEventListener('input', (e) => {
+            carColor = e.target.value;
+            document.querySelectorAll('.color-target').forEach(el => {
+                el.style.backgroundColor = carColor;
+            });
+        });
+    }
+
+    if(plateInput) {
+        plateInput.addEventListener('input', (e) => {
+            let val = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            e.target.value = val;
+            if(previewPlateNode) previewPlateNode.innerText = val || "WBO-2026"; 
+        });
+    }
+
+    function switchScreen(screenId) {
+        document.getElementById('setup-screen').classList.add('game-hidden');
+        document.getElementById('play-screen').classList.add('game-hidden');
+        document.getElementById('result-screen').classList.add('game-hidden');
+        document.getElementById(screenId).classList.remove('game-hidden');
+    }
+
+    const startBtn = document.getElementById('btn-start');
+    if(startBtn) {
+        startBtn.addEventListener('click', (e) => {
+            e.preventDefault(); // 攔截 WP 預設行為
+            e.stopPropagation();
+            
+            carPlate = plateInput.value.trim() || 'WBO-2026';
+            carColor = colorInput.value;
+            
+            initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            
+            initGame();
+            switchScreen('play-screen');
+            gameState = 'PLAY';
+        });
+    }
+
+    document.getElementById('btn-restart').addEventListener('click', (e) => {
+        e.preventDefault();
+        switchScreen('setup-screen');
+        gameState = 'SETUP';
+    });
+
+    document.getElementById('btn-hook').addEventListener('click', (e) => {
+        e.preventDefault();
+        alert(`🔮 時光倒流成功！\n\n【產險御守護盾啟動】\n經計算，您這場競速中雖然花了 ${elapsedTime.toFixed(2)} 秒極速完賽，但沿途撞出的天價維修費為 $${totalCost.toLocaleString()} 元！\n\n🛡️ 若您事先在線上規劃「車體險 + 第三人 + 超額責任險」：\n👉 您的實際理賠自付額將一瞬間歸零變 $0 元！全數由保險公司為您代償！\n\n搶時間更要顧荷包，現在就一鍵客製化您的專屬保單，讓安心隨行！`);
+    });
+
+    document.getElementById('btn-share').addEventListener('click', (e) => {
+        e.preventDefault();
+        alert(`📢 成績已複製到剪貼簿！\n「我在【馬路生存戰】開著專屬愛車 ${carPlate}，以 ${elapsedTime.toFixed(2)} 秒全速衝線！但一路上也豪邁撞出了 $${totalCost.toLocaleString()} 元天價帳單！誰敢來挑戰比我快、比我慘？ ➔ [活動網址]」`);
+    });
+
+    // 鍵盤操控 + 攔截 WP 網頁捲動
+    window.addEventListener('keydown', (e) => {
+        if (gameState !== 'PLAY') return;
+        
+        // 攔截上下左右、空白鍵、WASD，阻止 WP 頁面滾動
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
+            e.preventDefault();
+        }
+
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { triggerLeft(); }
+        if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { triggerRight(); }
+        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.Gas = true;
+        if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { keys.Brake = true; playBrakeSound(); }
+    });
+    
+    window.addEventListener('keyup', (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.Gas = false;
+        if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.Brake = false;
+    });
+
+    function setupMobileBtn(id, pressCallback, releaseCallback) {
+        const btn = document.getElementById(id);
+        if(!btn) return;
+        btn.addEventListener('mousedown', pressCallback);
+        if(releaseCallback) btn.addEventListener('mouseup', releaseCallback);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); pressCallback(); });
+        if(releaseCallback) btn.addEventListener('touchend', (e) => { e.preventDefault(); releaseCallback(); });
+    }
+    setupMobileBtn('btn-left', triggerLeft);
+    setupMobileBtn('btn-right', triggerRight);
+    setupMobileBtn('btn-gas', () => { keys.Gas = true; }, () => { keys.Gas = false; });
+    setupMobileBtn('btn-brake', () => { keys.Brake = true; playBrakeSound(); }, () => { keys.Brake = false; });
+
+    function triggerLeft() { if (player.targetLane > 0) { player.targetLane--; playTurnSound(); } }
+    function triggerRight() { if (player.targetLane < 2) { player.targetLane++; playTurnSound(); } }
+
+    function initGame() {
+        canvas.width = 400;
+        canvas.height = 600;
+        totalCost = 0;
+        progress = 0;
+        gameClock = 0;
+        elapsedTime = 0;
+        gameStartTime = performance.now();
+        player.x = lanes[1];
+        player.targetLane = 1;
+        player.speed = 3;
+        obstacles = [];
+        particles = [];
+        splashTexts = [];
+        shakeFrames = 0;
+    }
+
+    function gameLoop() {
+        if (gameState === 'PLAY') { update(); render(); }
+        requestAnimationFrame(gameLoop);
+    }
+
+    function update() {
+        gameClock++;
+        if (progress < 100) elapsedTime = (performance.now() - gameStartTime) / 1000;
+        if (progress < 100) {
+            progress += player.speed * 0.015;
+            if (progress >= 100) { progress = 100; endGame(); }
+        }
+
+        updateEngineSound(player.speed, keys.Gas);
+
+        if (keys.Gas && player.speed < player.maxSpeed) player.speed += 0.12;
+        if (keys.Brake && player.speed > 0) player.speed -= 0.25;
+        if (!keys.Gas && !keys.Brake) {
+            if (player.speed > 3) player.speed -= 0.04;
+            if (player.speed < 3) player.speed += 0.04;
+        }
+
+        let targetX = lanes[player.targetLane];
+        player.x += (targetX - player.x) * 0.22;
+
+        if (gameClock % 70 === 0 && progress < 95) {
+            let randTemplate = accidentTemplates[Math.floor(Math.random() * accidentTemplates.length)];
+            let randLane = Math.floor(Math.random() * 3);
+            obstacles.push({
+                x: lanes[randLane] + 5, y: -60, w: 20, h: 45,
+                speed: 1 + Math.random() * 2.5, template: randTemplate
+            });
+        }
+
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            let obs = obstacles[i];
+            obs.y += player.speed - obs.speed; 
+            if (player.x < obs.x + obs.w && player.x + player.w > obs.x &&
+                player.y < obs.y + obs.h && player.y + player.h > obs.y) {
+                triggerCollision(obs.template);
+                obstacles.splice(i, 1);
+                continue;
+            }
+            if (obs.y > canvas.height) obstacles.splice(i, 1);
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].x += particles[i].vx; particles[i].y += particles[i].vy; particles[i].alpha -= 0.03;
+            if (particles[i].alpha <= 0) particles.splice(i, 1);
+        }
+        for (let i = splashTexts.length - 1; i >= 0; i--) {
+            splashTexts[i].y -= 1.5; splashTexts[i].life--;
+            if (splashTexts[i].life <= 0) splashTexts.splice(i, 1);
+        }
+
+        document.getElementById('hud-cost').innerText = `維修費: $${totalCost.toLocaleString()}`;
+        document.getElementById('hud-time').innerText = `時間: ${elapsedTime.toFixed(2)}s`;
+        document.getElementById('hud-progress').innerText = `里程: ${Math.floor(progress)}%`;
+    }
+
+    function triggerCollision(template) {
+        totalCost += template.cost;
+        shakeFrames = 15; 
+        playCrashSound();
+        
+        splashTexts.push({
+            x: player.x - 10, y: player.y - 15,
+            text: `+$${template.cost.toLocaleString()}`, color: '#ff4757', life: 40
+        });
+
+        for (let i = 0; i < 15; i++) {
+            particles.push({
+                x: player.x + player.w/2, y: player.y,
+                vx: (Math.random() - 0.5) * 9, vy: (Math.random() - 0.5) * 9,
+                color: Math.random() > 0.4 ? '#ff9f43' : '#ff4757', alpha: 1
+            });
+        }
+        player.speed = 0.8; 
+    }
+
+    function render() {
+        ctx.save();
+        if (shakeFrames > 0) {
+            ctx.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
+            shakeFrames--;
+        }
+
+        ctx.fillStyle = '#2f3542'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#747d8c'; ctx.fillRect(70, 0, 260, canvas.height);
+
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(70,0); ctx.lineTo(70, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(330,0); ctx.lineTo(330, canvas.height); ctx.stroke();
+
+        ctx.strokeStyle = '#f1f2f6'; ctx.lineWidth = 2; ctx.setLineDash([20, 20]);
+        let offset = (gameClock * player.speed) % 40;
+        ctx.save(); ctx.translate(0, offset);
+        ctx.beginPath(); ctx.moveTo(160, -40); ctx.lineTo(160, canvas.height + 40); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(250, -40); ctx.lineTo(250, canvas.height + 40); ctx.stroke();
+        ctx.restore(); ctx.setLineDash([]); 
+
+        obstacles.forEach(obs => {
+            ctx.fillStyle = obs.template.color; ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+            ctx.fillStyle = '#2f3542'; ctx.fillRect(obs.x + 2, obs.y + 8, obs.w - 4, 10);
+            ctx.fillStyle = '#ff4757'; ctx.fillRect(obs.x, obs.y + obs.h - 4, 4, 4); ctx.fillRect(obs.x + obs.w - 4, obs.y + obs.h - 4, 4, 4);
+        });
+
+        ctx.fillStyle = carColor; ctx.fillRect(player.x, player.y, player.w, player.h);
+        ctx.fillStyle = '#dcdde1'; ctx.fillRect(player.x + 3, player.y + 12, player.w - 6, 12);
+        ctx.fillStyle = '#1e272e';
+        ctx.fillRect(player.x - 3, player.y + 8, 3, 10); ctx.fillRect(player.x + player.w, player.y + 8, 3, 10);
+        ctx.fillRect(player.x - 3, player.y + 38, 3, 10); ctx.fillRect(player.x + player.w, player.y + 38, 3, 10);
+        
+        if (keys.Brake) {
+            ctx.fillStyle = '#ff4757'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff4757';
+            ctx.fillRect(player.x, player.y + player.h - 3, 5, 3); ctx.fillRect(player.x + player.w - 5, player.y + player.h - 3, 5, 3);
+            ctx.shadowBlur = 0;
+        }
+
+        particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.alpha; ctx.fillRect(p.x, p.y, 4, 4); });
+        ctx.globalAlpha = 1;
+        splashTexts.forEach(st => { ctx.fillStyle = st.color; ctx.font = 'bold 18px Impact'; ctx.fillText(st.text, st.x, st.y); });
+
+        ctx.restore();
+    }
+
+    function endGame() {
+        gameState = 'RESULT';
+        switchScreen('result-screen');
+        playVictorySound();
+        
+        document.getElementById('final-time').innerText = `完賽時間：${elapsedTime.toFixed(2)} 秒`;
+        document.getElementById('final-cost').innerText = `累積損失：$${totalCost.toLocaleString()} 元`;
+        document.getElementById('final-plate').innerText = `車牌：${carPlate}`;
+        
+        let commentText = "";
+        if (totalCost === 0) {
+            commentText = `【拓海級車神】你花了 ${elapsedTime.toFixed(2)} 秒極速狂飆，且竟然在如此險惡的馬路上創下 $0 元維修費奇蹟！不過日常生活中意外總在鬆懈時降臨，這一次運氣好，下一次呢？`;
+        } else if (totalCost <= 150000) {
+            commentText = `【狂飆小資族】雖然完賽時間只有 ${elapsedTime.toFixed(2)} 秒，算得上敏捷，但沿路零星的小碰撞還是累計了 $${totalCost.toLocaleString()} 元的代價。這筆錢如果拿來買保險，可以保你好幾年！`;
+        } else {
+            commentText = `【拼命三郎破產流】為了追求速度（完賽時間：${elapsedTime.toFixed(2)} 秒），你簡集是用靈魂在撞車！高達 $${totalCost.toLocaleString()} 元的天價帳單直接可以買一台新車了。幸好這只是場遊戲...`;
+        }
+        document.getElementById('final-comment').innerHTML = commentText;
+    }
+
+    gameLoop();
+});
+</script>
+
+</body>
+</html>
